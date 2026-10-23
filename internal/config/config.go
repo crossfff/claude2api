@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,19 +13,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ModelOverride 用于覆盖或追加模型清单中的一项。
+// 未填写的字段保持内置值，Disabled 为 true 时从清单中移除该模型。
+type ModelOverride struct {
+	ID         string   `json:"id" yaml:"id"`
+	UpstreamID string   `json:"upstream_id" yaml:"upstream_id"`
+	Name       string   `json:"name" yaml:"name"`
+	Tier       string   `json:"tier" yaml:"tier"`
+	Thinking   *bool    `json:"thinking" yaml:"thinking"`
+	Aliases    []string `json:"aliases" yaml:"aliases"`
+	Disabled   bool     `json:"disabled" yaml:"disabled"`
+}
+
 // Settings 是运行时配置。
 type Settings struct {
-	Proxy                      string `json:"proxy" yaml:"proxy"`
-	WebHost                    string `json:"web_host" yaml:"web_host"`
-	WebPort                    int    `json:"web_port" yaml:"-"`
-	WebUCHost                  string `json:"-" yaml:"web_uc_host"`
-	AdminPassword              string `json:"-" yaml:"admin_password"`
-	StatusCheckIntervalSeconds int    `json:"status_check_interval_seconds" yaml:"status_check_seconds"`
-	RetryCount                 int    `json:"retry_count" yaml:"retry_count"`
-	ChatDelete                 bool   `json:"chat_delete" yaml:"delete_chat"`
-	MaxChatHistoryLength       int    `json:"max_chat_history_length" yaml:"max_history_length"`
-	RemoveInvalidAccount       bool   `json:"remove_invalid_account" yaml:"remove_invalid_account"`
-	DetailedAPILog             bool   `json:"detailed_api_log" yaml:"detailed_api_log"`
+	Proxy                      string          `json:"proxy" yaml:"proxy"`
+	WebHost                    string          `json:"web_host" yaml:"web_host"`
+	WebPort                    int             `json:"web_port" yaml:"-"`
+	WebUCHost                  string          `json:"-" yaml:"web_uc_host"`
+	AdminPassword              string          `json:"-" yaml:"admin_password"`
+	StatusCheckIntervalSeconds int             `json:"status_check_interval_seconds" yaml:"status_check_seconds"`
+	RetryCount                 int             `json:"retry_count" yaml:"retry_count"`
+	ChatDelete                 bool            `json:"chat_delete" yaml:"delete_chat"`
+	MaxChatHistoryLength       int             `json:"max_chat_history_length" yaml:"max_history_length"`
+	RemoveInvalidAccount       bool            `json:"remove_invalid_account" yaml:"remove_invalid_account"`
+	DetailedAPILog             bool            `json:"detailed_api_log" yaml:"detailed_api_log"`
+	DefaultModel               string          `json:"default_model" yaml:"default_model"`
+	ModelOverrides             []ModelOverride `json:"model_overrides" yaml:"model_overrides"`
 }
 
 var (
@@ -134,10 +149,45 @@ func Update(patch map[string]any) Settings {
 			current.RemoveInvalidAccount = mustBool(v)
 		case "detailed_api_log":
 			current.DetailedAPILog = mustBool(v)
+		case "default_model":
+			current.DefaultModel = strings.TrimSpace(fmt.Sprint(v))
+		case "model_overrides":
+			if overrides, err := decodeModelOverrides(v); err == nil {
+				current.ModelOverrides = overrides
+			} else {
+				slog.Warn("[配置] model_overrides 格式无效，已忽略", "err", err)
+			}
 		}
 	}
 	writeConfig()
 	return current
+}
+
+// decodeModelOverrides 把前端/配置文件传入的任意结构归一化为模型覆盖项。
+func decodeModelOverrides(v any) ([]ModelOverride, error) {
+	if v == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var raw []ModelOverride
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]ModelOverride, 0, len(raw))
+	for _, item := range raw {
+		item.ID = strings.TrimSpace(item.ID)
+		if item.ID == "" {
+			continue
+		}
+		item.UpstreamID = strings.TrimSpace(item.UpstreamID)
+		item.Name = strings.TrimSpace(item.Name)
+		item.Tier = strings.ToLower(strings.TrimSpace(item.Tier))
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 func mustAtoi(v any) int {

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"claude2api/internal/config"
+	"claude2api/internal/models"
 	"claude2api/internal/repository"
 	"claude2api/internal/service"
 
@@ -19,10 +20,7 @@ import (
 
 const (
 	MaxAPIBodyBytes = 20 << 20
-	defaultModel    = "claude-sonnet-4-6"
 )
-
-var supportedModels = []string{defaultModel, "claude-haiku-4-5-20251001", "claude-sonnet-5"}
 
 type Message struct {
 	Role       string
@@ -46,11 +44,18 @@ func bindRequest(c *gin.Context, out any) (json.RawMessage, error) {
 	return raw, err
 }
 
+// modelOrDefault 把客户端模型名归一化为上游可用的模型名。
+// 已登记的模型会映射到 UpstreamID（并保留 -thinking 后缀），
+// 未登记的模型原样透传，便于对接自定义上游模型。
 func modelOrDefault(model string) string {
-	if model == "" {
-		return defaultModel
+	spec, thinking, ok := models.ResolveModel(model)
+	if !ok {
+		return strings.TrimSpace(model)
 	}
-	return model
+	if thinking {
+		return spec.UpstreamID + "-thinking"
+	}
+	return spec.UpstreamID
 }
 
 func buildPrompt(messages []Message, images []string, tools []map[string]any, parallel bool, toolChoice json.RawMessage) (service.Prompt, error) {

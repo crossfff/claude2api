@@ -27,6 +27,8 @@ func NewMainEngine() *gin.Engine {
 	admin.GET("/accounts", handler.AdminAccounts)
 	admin.POST("/accounts/import", handler.AdminImportAccounts)
 	admin.POST("/accounts/refresh", handler.AdminRefreshAccount)
+	admin.GET("/models", handler.AdminModelCatalog)
+	admin.POST("/models/probe", handler.AdminProbeModels)
 	admin.GET("/config", handler.AdminGetConfig)
 	admin.POST("/config", handler.AdminUpdateConfig)
 	admin.POST("/delete", handler.AdminDeleteAccount)

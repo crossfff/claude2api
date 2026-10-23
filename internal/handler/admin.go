@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"claude2api/internal/config"
+	"claude2api/internal/models"
 	"claude2api/internal/repository"
 	"claude2api/internal/service"
 
@@ -95,7 +96,7 @@ func importAccounts(items []string) <-chan importResult {
 					results <- importResult{err: message}
 					return
 				}
-				if err := repository.UpsertAccount(&repository.Account{Email: info.Email, OrgUUID: info.OrgUUID, Cookies: map[string]string{"sessionKey": key}, Status: "active"}); err != nil {
+				if err := repository.UpsertAccount(&repository.Account{Email: info.Email, OrgUUID: info.OrgUUID, Plan: info.Plan, Cookies: map[string]string{"sessionKey": key}, Status: "active"}); err != nil {
 					slog.Warn("[导入] 保存账号失败", "email", info.Email, "err", err)
 					results <- importResult{email: info.Email, err: "保存账号失败"}
 					return
@@ -124,6 +125,42 @@ func AdminRefreshAccount(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"account": service.PublicAccountView(account)})
+}
+
+// AdminModelCatalog 返回当前生效的模型清单与号池等级分布。
+func AdminModelCatalog(c *gin.Context) {
+	plans := map[string]int{}
+	for _, account := range service.PublicAccounts() {
+		plan := account.Plan
+		if plan == "" {
+			plan = "unknown"
+		}
+		plans[plan]++
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"models":        models.ModelCatalog(),
+		"default_model": models.DefaultModelID(),
+		"tiers":         models.TierNames(),
+		"account_plans": plans,
+	})
+}
+
+// AdminProbeModels 用指定账号探测 claude.ai 实际返回的模型信息。
+// 上游模型 ID 或等级字段变化时，用它可以快速确认真实值。
+func AdminProbeModels(c *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	account := service.AccountByEmail(body.Email)
+	if account == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "账号不存在或不可用"})
+		return
+	}
+	client := service.NewClaudeAI(service.SessionKey(account), config.Get().Proxy, account.Email, account.OrgUUID)
+	results := client.ProbeModels()
+	slog.Info("[模型] 上游探测完成", "email", account.Email, "plan", account.Plan)
+	c.JSON(http.StatusOK, gin.H{"email": account.Email, "plan": account.Plan, "results": results})
 }
 
 func AdminGetConfig(c *gin.Context) {

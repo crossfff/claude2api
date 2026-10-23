@@ -81,22 +81,38 @@ sk-ant-sid01-yyyyyyyy
 
 ### 支持的模型
 
-当前服务暴露以下基础模型，并同时提供对应的 `-thinking` 版本：
+模型清单集中定义在 `internal/models/models.go`，同时可通过 `config.yaml` 的
+`model_overrides` 覆盖或追加，无需改代码。内置清单对应 Anthropic 2026-10 的官方模型：
 
-- `claude-sonnet-4-6`
-- `claude-haiku-4-5-20251001`
-- `claude-sonnet-5`
+| 对外模型名 | 官方名称 | 最低订阅等级 | Thinking |
+| --- | --- | --- | --- |
+| `claude-fable-5-1` | Claude Fable 5.1 | Max | 支持 |
+| `claude-opus-5-5` | Claude Opus 5.5 | Pro | 支持 |
+| `claude-sonnet-5-5` | Claude Sonnet 5.5 | Free | 支持 |
+| `claude-haiku-5-5` | Claude Haiku 5.5 | Free | 支持 |
+
+每个模型都额外提供 `-thinking` 版本（例如 `claude-opus-5-5-thinking`），
+用于开启 Claude.ai 的扩展思考模式。
+
+`最低订阅等级` 是调用该模型时对账号的要求：调度器只会把请求分配给等级满足要求的
+账号，等级未知的账号不做限制。账号等级在导入或刷新账号时，从 Claude.ai
+`/api/account` 返回的 `rate_limit_tier` / `organization_type` 字段自动识别。
 
 实际可用性取决于账号权限和 Claude.ai 上游状态，请以 `GET /v1/models` 的返回结果为准。
+
+> **上游模型 ID 可能随 Claude.ai 版本变化。** 可以用后台接口
+> `POST /api/models/probe`（body: `{"email":"账号邮箱"}`）让指定账号直接探测
+> Claude.ai 返回的模型信息，再据此调整 `model_overrides`。
+> 也可以用 `GET /api/models` 查看当前清单与号池等级分布。
 
 <details>
 <summary><code>GET /v1/models</code></summary>
 <br>
 
-获取当前服务暴露的模型列表：
+获取当前服务暴露的模型列表，可附加 `?tier=pro` 只看某个等级可用的模型：
 
 ```bash
-curl http://localhost:8787/v1/models \
+curl "http://localhost:8787/v1/models?tier=pro" \
   -H "Authorization: Bearer <api-key>"
 ```
 
@@ -105,10 +121,14 @@ curl http://localhost:8787/v1/models \
   "object": "list",
   "data": [
     {
-      "id": "claude-sonnet-4-6",
+      "id": "claude-opus-5-5",
       "object": "model",
       "created": 1750000000,
-      "owned_by": "anthropic"
+      "owned_by": "anthropic",
+      "name": "Claude Opus 5.5",
+      "tier": "pro",
+      "upstream_id": "claude-opus-5-5",
+      "thinking": false
     }
   ]
 }
@@ -127,7 +147,7 @@ curl http://localhost:8787/v1/chat/completions \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-6",
+    "model": "claude-sonnet-5-5",
     "messages": [
       {
         "role": "system",
@@ -161,7 +181,7 @@ curl http://localhost:8787/v1/responses \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-6",
+    "model": "claude-sonnet-5-5",
     "instructions": "回答尽量简短",
     "input": [
       {
@@ -193,7 +213,7 @@ curl http://localhost:8787/v1/messages \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-6",
+    "model": "claude-sonnet-5-5",
     "max_tokens": 1024,
     "system": "回答尽量简短",
     "messages": [

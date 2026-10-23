@@ -47,7 +47,7 @@ func TestAPIContracts(t *testing.T) {
 		name, method, body, want string
 		handler                  gin.HandlerFunc
 	}{
-		{"models", "GET", "", "claude-sonnet-4-6", ListModels},
+		{"models", "GET", "", "claude-sonnet-5-5", ListModels},
 		{"chat single", "POST", `{"messages":[{"role":"user","content":"hi"}]}`, `"chat.completion"`, OpenAIChat},
 		{"chat multi image stream", "POST", `{"stream":true,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"answer"},{"role":"user","content":[{"type":"text","text":"image"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}}]}]}`, "data: [DONE]", OpenAIChat},
 		{"chat image url", "POST", `{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}]}]}`, `"chat.completion"`, OpenAIChat},

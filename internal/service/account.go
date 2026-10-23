@@ -13,6 +13,7 @@ import (
 type PublicAccount struct {
 	Email      string    `json:"email"`
 	OrgUUID    string    `json:"org_uuid"`
+	Plan       string    `json:"plan"`
 	Status     string    `json:"status,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
@@ -45,6 +46,7 @@ func PublicAccountView(account *repository.Account) *PublicAccount {
 	return &PublicAccount{
 		Email:      account.Email,
 		OrgUUID:    account.OrgUUID,
+		Plan:       account.Plan,
 		Status:     account.Status,
 		CreatedAt:  account.CreatedAt,
 		UpdatedAt:  account.UpdatedAt,
@@ -100,6 +102,9 @@ func RefreshAccount(email string) (*repository.Account, bool) {
 
 	repository.UpdateAccount(account.Email, func(a *repository.Account) {
 		a.Email, a.OrgUUID, a.Status = info.Email, info.OrgUUID, "active"
+		if info.Plan != "" {
+			a.Plan = info.Plan
+		}
 	})
 	return repository.AccountByEmail(info.Email), false
 }

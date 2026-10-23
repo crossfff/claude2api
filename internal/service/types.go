@@ -6,13 +6,19 @@ import "encoding/json"
 type UserInfo struct {
 	Email   string
 	OrgUUID string
+	// Plan 是识别出的订阅等级：free/pro/max/team/enterprise。
+	// 上游未返回可识别字段时为空字符串。
+	Plan string
 }
 
 type ClaudeAccount struct {
 	EmailAddress string `json:"email_address"`
 	Memberships  []struct {
 		Organization struct {
-			UUID string `json:"uuid"`
+			UUID          string `json:"uuid"`
+			RateLimitTier string `json:"rate_limit_tier"`
+			Type          string `json:"organization_type"`
+			BillingType   string `json:"billing_type"`
 		} `json:"organization"`
 	} `json:"memberships"`
 }

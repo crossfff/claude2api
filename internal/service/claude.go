@@ -127,7 +127,10 @@ func (claudeAI *ClaudeAI) GetUserInfo() (*UserInfo, error) {
 
 	info := &UserInfo{Email: acct.EmailAddress}
 	if len(acct.Memberships) > 0 {
-		info.OrgUUID = acct.Memberships[0].Organization.UUID
+		org := acct.Memberships[0].Organization
+		info.OrgUUID = org.UUID
+		// rate_limit_tier 最准确，其次 organization_type，最后 billing_type。
+		info.Plan = DetectPlan(org.RateLimitTier, org.Type, org.BillingType)
 		claudeAI.orgUUID = info.OrgUUID
 	}
 	return info, nil

@@ -6,18 +6,38 @@ import (
 	"strings"
 	"time"
 
+	"claude2api/internal/models"
 	"claude2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
+// ListModels 返回模型清单。
+// 不带参数时返回全部已登记模型；带 ?tier=pro 时只返回该等级可用的模型。
 func ListModels(c *gin.Context) {
 	now := time.Now().Unix()
-	data := make([]gin.H, 0)
-	for _, id := range supportedModels {
-		for _, model := range []string{id, id + "-thinking"} {
+	catalog := models.ModelCatalog()
+	if raw := c.Query("tier"); raw != "" {
+		if tier, ok := models.ParseTier(raw); ok {
+			catalog = models.ForTier(tier)
+		}
+	}
+	data := make([]gin.H, 0, len(catalog)*2)
+	for _, spec := range catalog {
+		ids := []string{spec.ID}
+		if spec.Thinking {
+			ids = append(ids, spec.ID+"-thinking")
+		}
+		for _, id := range ids {
 			data = append(data, gin.H{
-				"id": model, "object": "model", "created": now, "owned_by": "anthropic",
+				"id":          id,
+				"object":      "model",
+				"created":     now,
+				"owned_by":    "anthropic",
+				"name":        spec.Name,
+				"tier":        spec.Tier,
+				"upstream_id": spec.UpstreamID,
+				"thinking":    strings.HasSuffix(id, "-thinking"),
 			})
 		}
 	}

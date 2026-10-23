@@ -17,7 +17,7 @@ func pretty(v any) string { b, _ := json.MarshalIndent(v, "", "  "); return stri
 const (
 	sdkTestBaseURL = "http://127.0.0.1:8787"
 	sdkTestAPIKey  = "claude2api"
-	sdkTestModel   = "claude-sonnet-5"
+	sdkTestModel   = "claude-sonnet-5-5"
 )
 
 func sdkTestConfig(t *testing.T) (context.Context, string, string, string) {

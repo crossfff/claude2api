@@ -8,3 +8,17 @@ delete_chat: true            # 删除会话
 max_history_length: 12000    # 附件阈值
 remove_invalid_account: false # 自动移除会话失效的账号
 detailed_api_log: true       # 记录完整 API 请求与输出
+default_model: claude-sonnet-5-5 # 未指定 model 时使用的默认模型
+
+# 模型清单覆盖（可选）。内置清单见 internal/models/models.go，
+# 这里可以修改对外名称、上游 ID、最低可用等级，或追加新模型。
+# model_overrides:
+#   - id: claude-opus-5-5          # 对外模型名
+#     upstream_id: claude-opus-5-5 # 传给 claude.ai 的 model 值
+#     name: Claude Opus 5.5        # 后台展示名
+#     tier: pro                    # free / pro / max / team / enterprise
+#     thinking: true               # 是否提供 -thinking 版本
+#     aliases: [claude-opus-latest] # 兼容别名
+#   - id: claude-sonnet-5-5
+#     disabled: true               # 从清单中移除
+

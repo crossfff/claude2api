@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"claude2api/internal/config"
+	"claude2api/internal/models"
 	"claude2api/internal/repository"
 )
 
@@ -37,14 +38,18 @@ func clientFor(acct *repository.Account, proxy string) *accountClient {
 }
 
 // pickAPIAccount 轮询可用账号。
-func pickAPIAccount() *repository.Account {
+// requiredPlan 非空时只挑选等级满足要求的账号；等级未知的账号不排除。
+func pickAPIAccount(requiredPlan string) *repository.Account {
 	accounts := repository.LoadAccounts()
 	usable := make([]repository.Account, 0, len(accounts))
 	active := map[string]bool{}
 	for i := range accounts {
-		if AccountUsable(&accounts[i]) {
+		if !AccountUsable(&accounts[i]) {
+			continue
+		}
+		active[accounts[i].Email] = true
+		if PlanAllows(accounts[i].Plan, requiredPlan) {
 			usable = append(usable, accounts[i])
-			active[accounts[i].Email] = true
 		}
 	}
 	apiIndexLock.Lock()
@@ -89,10 +94,17 @@ func (Dispatcher) Complete(reqModel string, prompt Prompt, onText func(string)) 
 		}
 	}
 
+	// 按模型要求的最低等级挑选账号，避免把高等级模型的请求打到低等级账号。
+	spec, _, _ := models.ResolveModel(reqModel)
+	requiredPlan := spec.Tier
+
 	var lastErr error
 	for attempt := 0; attempt <= retries; attempt++ {
-		acct := pickAPIAccount()
+		acct := pickAPIAccount(requiredPlan)
 		if acct == nil {
+			if requiredPlan != "" && requiredPlan != "free" {
+				return res, fmt.Errorf("号池中没有满足 %s 等级的可用账号（模型 %s）", requiredPlan, reqModel)
+			}
 			return res, fmt.Errorf("号池中没有可用账号")
 		}
 		email := acct.Email

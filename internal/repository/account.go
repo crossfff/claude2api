@@ -11,6 +11,7 @@ type Account struct {
 	ID        uint              `json:"-" gorm:"primaryKey"`
 	Email     string            `json:"email" gorm:"uniqueIndex;not null"`
 	OrgUUID   string            `json:"org_uuid" gorm:"column:org_uuid"`
+	Plan      string            `json:"plan" gorm:"column:plan"`
 	Cookies   map[string]string `json:"-" gorm:"serializer:json"`
 	Status    string            `json:"status,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
@@ -39,7 +40,13 @@ func AccountByEmail(email string) *Account {
 }
 
 // UpsertAccount 写入或更新账号。
+// 传入的 Plan 为空时保留数据库中的旧值，避免刷新失败把等级清空。
 func UpsertAccount(a *Account) error {
+	if a.Plan == "" {
+		if old := AccountByEmail(a.Email); old != nil {
+			a.Plan = old.Plan
+		}
+	}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "email"}},
 		UpdateAll: true,
