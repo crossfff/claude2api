@@ -468,6 +468,7 @@ function openDetail(email) {
         a.status || "unknown"
       ] || a.status,
     ],
+    ["订阅等级", a.plan || "未知"],
     ["组织 UUID", a.org_uuid || "—"],
     ["创建时间", fmtTime(a.created_at) || "—"],
     ["已存活", fmtSurvived(a.created_at)],
