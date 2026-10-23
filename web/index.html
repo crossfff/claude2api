@@ -116,7 +116,11 @@
             <progress value="0" max="1"></progress>
           </div>
           <div class="model-strip">
-            <div class="model-strip-title">系统可用模型</div>
+            <div class="model-strip-title">
+              系统可用模型
+              <button id="btn-sync-models" class="btn-sm" type="button">从 web 同步</button>
+              <span class="model-sync-hint" id="model-sync-hint"></span>
+            </div>
             <div class="model-list" id="account-models">加载中…</div>
           </div>
           <div class="filterbar">

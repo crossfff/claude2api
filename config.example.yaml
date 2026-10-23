@@ -9,6 +9,7 @@ max_history_length: 12000    # 附件阈值
 remove_invalid_account: false # 自动移除会话失效的账号
 detailed_api_log: true       # 记录完整 API 请求与输出
 default_model: claude-sonnet-5-5 # 未指定 model 时使用的默认模型
+model_sync_seconds: 3600     # 从 Claude.ai 网页端同步模型清单的间隔（秒），负数表示关闭
 
 # 模型清单覆盖（可选）。内置清单见 internal/models/models.go，
 # 这里可以修改对外名称、上游 ID、最低可用等级，或追加新模型。

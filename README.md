@@ -19,11 +19,18 @@
 Docker Compose 一键部署
 
 ```bash
-git clone https://github.com/basketikun/claude2api.git
+git clone https://github.com/crossfff/claude2api.git
 cd claude2api
 cp config.example.yaml config.yaml
-docker compose up -d
+# 编辑 config.yaml：至少填写 proxy（访问 claude.ai 的出口代理）与 web_uc_host（沙箱域名）
+docker compose up -d --build
 ```
+
+> `docker compose` 默认使用仓库内的 `Dockerfile` 本地构建，确保运行的是本仓库代码。
+> 首次构建需要下载 Go 依赖，耗时较长；之后更新只需 `git pull && docker compose up -d --build`。
+>
+> 也可以使用预构建镜像：给仓库打 `v*.*.*` 标签会触发 GitHub Actions 构建并推送
+> `ghcr.io/crossfff/claude2api:latest`（需先在 GitHub Packages 页面把镜像设为 public）。
 
 ## 核心功能
 
@@ -81,8 +88,8 @@ sk-ant-sid01-yyyyyyyy
 
 ### 支持的模型
 
-模型清单集中定义在 `internal/models/models.go`，同时可通过 `config.yaml` 的
-`model_overrides` 覆盖或追加，无需改代码。内置清单对应 Anthropic 2026-10 的官方模型：
+模型清单集中定义在 `internal/models/models.go`，并支持从 Claude.ai 网页端自动拉取。
+内置清单对应 Anthropic 2026-10 的官方模型：
 
 | 对外模型名 | 官方名称 | 最低订阅等级 | Thinking |
 | --- | --- | --- | --- |
@@ -94,16 +101,33 @@ sk-ant-sid01-yyyyyyyy
 每个模型都额外提供 `-thinking` 版本（例如 `claude-opus-5-5-thinking`），
 用于开启 Claude.ai 的扩展思考模式。
 
+### 模型清单自动同步
+
+服务启动后会按 `model_sync_seconds`（默认 3600 秒）定时从 Claude.ai 网页端
+拉取当前账号可见的模型清单，并持久化到 `data/web_models.json`：
+
+- 拉取成功后 `GET /v1/models` 立即反映最新模型，重启后自动恢复缓存；
+- 拉取失败时保留上一次成功的缓存，失败原因记录在 `GET /api/models` 的 `dynamic.last_error`；
+- 上游无法提供等级信息时按模型系列推断（fable/opus → pro，sonnet/haiku → free）。
+
+清单合并优先级（后者覆盖前者）：**内置清单 → web 端拉取 → `config.yaml` 的 `model_overrides`**。
+也就是说自动同步会跟随上游变化，而人工配置始终拥有最终决定权。
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /api/models/sync` | 立即同步；body 可选 `{"email":"指定账号"}`，不传则自动挑等级最高的账号 |
+| `POST /api/models/clear` | 清空 web 缓存，回退到内置清单 |
+| `GET /api/models` | 查看当前清单、来源、更新时间与失败原因 |
+| `POST /api/models/probe` | 探测上游原始响应，用于排查字段变化 |
+
+关闭自动同步：把 `model_sync_seconds` 设为负数。后台「账号管理」页的
+「从 web 同步」按钮可随时手动触发一次。
+
 `最低订阅等级` 是调用该模型时对账号的要求：调度器只会把请求分配给等级满足要求的
 账号，等级未知的账号不做限制。账号等级在导入或刷新账号时，从 Claude.ai
 `/api/account` 返回的 `rate_limit_tier` / `organization_type` 字段自动识别。
 
 实际可用性取决于账号权限和 Claude.ai 上游状态，请以 `GET /v1/models` 的返回结果为准。
-
-> **上游模型 ID 可能随 Claude.ai 版本变化。** 可以用后台接口
-> `POST /api/models/probe`（body: `{"email":"账号邮箱"}`）让指定账号直接探测
-> Claude.ai 返回的模型信息，再据此调整 `model_overrides`。
-> 也可以用 `GET /api/models` 查看当前清单与号池等级分布。
 
 <details>
 <summary><code>GET /v1/models</code></summary>
@@ -244,7 +268,7 @@ Codex CLI 可通过自定义 OpenAI Base URL 使用 `/v1/responses`，Claude Cod
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=basketikun/claude2api&type=Date)](https://www.star-history.com/#basketikun/claude2api&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=crossfff/claude2api&type=Date)](https://www.star-history.com/#crossfff/claude2api&Date)
 
 ## 社区支持
 

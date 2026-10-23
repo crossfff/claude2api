@@ -316,6 +316,7 @@ function modelNames(models) {
 
 async function loadAccountModels() {
   const box = $("#account-models");
+  const hint = $("#model-sync-hint");
   box.textContent = "加载中…";
   try {
     const names = modelNames(await fetchModels());
@@ -327,8 +328,38 @@ async function loadAccountModels() {
           )
           .join("")
       : '<span class="model-empty">暂无可用模型</span>';
+    if (hint) {
+      try {
+        const meta = await api("/api/models");
+        const dyn = meta.dynamic || {};
+        hint.textContent = dyn.updated_at
+          ? `web 来源 ${dyn.source} · ${fmtTime(dyn.updated_at)}`
+          : "当前使用内置清单";
+      } catch (e) {
+        hint.textContent = "";
+      }
+    }
   } catch (e) {
     box.innerHTML = `<span class="model-error">加载失败：${esc(e.message)}</span>`;
+  }
+}
+
+// syncModels 立即从 claude.ai 网页端拉取模型清单。
+async function syncModels() {
+  const btn = $("#btn-sync-models");
+  const hint = $("#model-sync-hint");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  hint.textContent = "同步中…";
+  try {
+    const data = await api("/api/models/sync", "POST", {});
+    const result = data.result || {};
+    await loadAccountModels();
+    hint.textContent = `已同步 ${result.count || 0} 个模型（${result.source || "-"}）`;
+  } catch (e) {
+    hint.textContent = "同步失败：" + e.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -966,6 +997,7 @@ $("#account-models").addEventListener("click", (e) => {
 });
 
 $("#btn-refresh").addEventListener("click", refreshAccountsPage);
+$("#btn-sync-models").addEventListener("click", syncModels);
 $("#btn-refresh-all").addEventListener("click", refreshAllAccounts);
 $("#btn-import").addEventListener("click", () => {
   $("#import-progress").classList.add("hidden");

@@ -86,11 +86,39 @@ var builtinModels = []ModelSpec{
 	},
 }
 
-// ModelCatalog 返回当前生效的模型清单：内置清单叠加配置覆盖。
+// ModelCatalog 返回当前生效的模型清单。
+//
+// 合并优先级（后者覆盖前者）：
+//  1. 内置清单；
+//  2. 从 claude.ai 网页端实时拉取的清单（同 ID 更新上游 ID 与展示名，新 ID 追加）；
+//  3. config.yaml 的 model_overrides（人工修正，优先级最高）。
 func ModelCatalog() []ModelSpec {
 	out := make([]ModelSpec, 0, len(builtinModels))
 	for _, spec := range builtinModels {
 		out = append(out, spec)
+	}
+
+	dynamic.mu.RLock()
+	webModels := append([]ModelSpec(nil), dynamic.models...)
+	dynamic.mu.RUnlock()
+	for _, spec := range webModels {
+		index := -1
+		for i := range out {
+			if out[i].ID == spec.ID {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			out = append(out, spec)
+			continue
+		}
+		if spec.UpstreamID != "" {
+			out[index].UpstreamID = spec.UpstreamID
+		}
+		if spec.Name != "" {
+			out[index].Name = spec.Name
+		}
 	}
 
 	for _, override := range config.Get().ModelOverrides {

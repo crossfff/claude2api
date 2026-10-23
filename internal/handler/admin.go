@@ -138,11 +138,41 @@ func AdminModelCatalog(c *gin.Context) {
 		plans[plan]++
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"models":        models.ModelCatalog(),
-		"default_model": models.DefaultModelID(),
-		"tiers":         models.TierNames(),
-		"account_plans": plans,
+		"models":                models.ModelCatalog(),
+		"default_model":         models.DefaultModelID(),
+		"tiers":                 models.TierNames(),
+		"account_plans":         plans,
+		"dynamic":               models.Snapshot(),
+		"sync_interval_seconds": config.Get().ModelSyncIntervalSeconds,
 	})
+}
+
+// AdminSyncModels 立即从 claude.ai 网页端拉取模型清单并写入缓存。
+// body 可选：{"email":"指定账号"}，不传则自动挑选等级最高的可用账号。
+func AdminSyncModels(c *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	result, err := service.SyncModels(body.Email)
+	if err != nil {
+		slog.Warn("[模型] 手动同步失败", "err", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "result": result})
+		return
+	}
+	slog.Info("[模型] 手动同步完成", "email", result.Email, "count", result.Count, "source", result.Source)
+	c.JSON(http.StatusOK, gin.H{"result": result, "models": models.ModelCatalog()})
+}
+
+// AdminClearDynamicModels 清空 web 端模型缓存，回退到内置清单。
+func AdminClearDynamicModels(c *gin.Context) {
+	if err := models.ClearDynamic(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	slog.Info("[模型] 已清空 web 端模型缓存")
+	c.JSON(http.StatusOK, gin.H{"models": models.ModelCatalog()})
 }
 
 // AdminProbeModels 用指定账号探测 claude.ai 实际返回的模型信息。

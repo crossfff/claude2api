@@ -40,6 +40,7 @@ type Settings struct {
 	DetailedAPILog             bool            `json:"detailed_api_log" yaml:"detailed_api_log"`
 	DefaultModel               string          `json:"default_model" yaml:"default_model"`
 	ModelOverrides             []ModelOverride `json:"model_overrides" yaml:"model_overrides"`
+	ModelSyncIntervalSeconds   int             `json:"model_sync_interval_seconds" yaml:"model_sync_seconds"`
 }
 
 var (
@@ -68,7 +69,7 @@ func Load() {
 	}
 	configPath = filepath.Join(baseDir, "config.yaml")
 	ensureConfig(configPath)
-	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000}
+	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, ModelSyncIntervalSeconds: 3600}
 	data, _ := os.ReadFile(configPath)
 	_ = yaml.Unmarshal(data, &current)
 	current.Proxy = strings.TrimSpace(current.Proxy)
@@ -86,6 +87,10 @@ func Load() {
 	}
 	if current.MaxChatHistoryLength <= 0 {
 		current.MaxChatHistoryLength = 12000
+	}
+	// 0 视为未配置，回退默认；负数表示显式关闭自动同步。
+	if current.ModelSyncIntervalSeconds == 0 {
+		current.ModelSyncIntervalSeconds = 3600
 	}
 }
 
@@ -151,6 +156,13 @@ func Update(patch map[string]any) Settings {
 			current.DetailedAPILog = mustBool(v)
 		case "default_model":
 			current.DefaultModel = strings.TrimSpace(fmt.Sprint(v))
+		case "model_sync_interval_seconds":
+			seconds := mustAtoi(v)
+			// 0 视为未配置，回退默认；负数表示关闭。
+			if seconds == 0 {
+				seconds = 3600
+			}
+			current.ModelSyncIntervalSeconds = seconds
 		case "model_overrides":
 			if overrides, err := decodeModelOverrides(v); err == nil {
 				current.ModelOverrides = overrides
