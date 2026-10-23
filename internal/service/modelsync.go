@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,8 +33,14 @@ type ModelSyncResult struct {
 	Count     int                `json:"count"`
 	Models    []models.ModelSpec `json:"models"`
 	UpdatedAt time.Time          `json:"updated_at"`
+	Accounts  []string           `json:"accounts,omitempty"`
+	Failed    []string           `json:"failed,omitempty"`
 	Attempts  []ModelProbeResult `json:"attempts,omitempty"`
 }
+
+// maxSyncAccounts 是自动同步时最多遍历的账号数。
+// 不同订阅等级能看到的模型不同，合并多个账号才能得到最全清单。
+const maxSyncAccounts = 5
 
 // modelPaths 是网页端可能返回模型清单的候选路径，按命中概率排序。
 func (claudeAI *ClaudeAI) modelPaths() []string {
@@ -215,18 +222,91 @@ func looksLikeModelID(value string) bool {
 	return !strings.ContainsAny(value, " \t\r\n/\\")
 }
 
-// SyncModels 用号池账号从 claude.ai 网页端拉取模型并写入缓存。
-// email 为空时自动挑选等级最高的可用账号（能看到的模型最全）。
+// SyncModels 从 claude.ai 网页端拉取模型清单并写入缓存。
+//
+// email 为空时遍历号池中最多 maxSyncAccounts 个可用账号（等级从高到低），
+// 把各自可见的模型合并去重，得到「最全」清单；指定 email 时只同步该账号。
 func SyncModels(email string) (*ModelSyncResult, error) {
-	account := pickSyncAccount(email)
-	if account == nil {
+	email = strings.TrimSpace(email)
+	if email != "" {
+		account := AccountByEmail(email)
+		if account == nil {
+			err := fmt.Errorf("账号不存在或不可用: %s", email)
+			models.SetDynamicError(err.Error())
+			return nil, err
+		}
+		return syncFromAccount(account)
+	}
+
+	accounts := syncCandidates()
+	if len(accounts) == 0 {
 		err := fmt.Errorf("号池中没有可用账号，无法从 web 端拉取模型")
 		models.SetDynamicError(err.Error())
 		return nil, err
 	}
 
-	client := NewClaudeAI(SessionKey(account), config.Get().Proxy, account.Email, account.OrgUUID)
-	sync, err := client.FetchWebModels()
+	merged := make([]models.ModelSpec, 0, 16)
+	seen := make(map[string]bool, 16)
+	var attempts []ModelProbeResult
+	var succeeded, failed []string
+	var lastErr error
+
+	for i, account := range accounts {
+		if i > 0 {
+			// 账号之间稍作停顿，降低触发上游风控的概率。
+			time.Sleep(time.Second)
+		}
+		sync, err := fetchFromAccount(account)
+		if sync != nil {
+			attempts = append(attempts, sync.Attempts...)
+		}
+		if err != nil {
+			failed = append(failed, account.Email)
+			lastErr = err
+			continue
+		}
+		succeeded = append(succeeded, account.Email)
+		for _, spec := range sync.Models {
+			if seen[spec.ID] {
+				continue
+			}
+			seen[spec.ID] = true
+			merged = append(merged, spec)
+		}
+	}
+
+	if len(merged) == 0 {
+		message := "所有账号都未能拉到模型列表"
+		if lastErr != nil {
+			message = lastErr.Error()
+		}
+		models.SetDynamicError(message)
+		return &ModelSyncResult{Attempts: attempts, Failed: failed}, fmt.Errorf("%s", message)
+	}
+
+	source := "web(merged)"
+	if len(succeeded) == 1 {
+		source = "web"
+	}
+	if err := models.SetDynamic(source, merged); err != nil {
+		models.SetDynamicError(err.Error())
+		return nil, fmt.Errorf("保存模型缓存失败: %w", err)
+	}
+	return &ModelSyncResult{
+		Email:     succeeded[0],
+		Source:    source,
+		Count:     len(merged),
+		Models:    merged,
+		UpdatedAt: time.Now(),
+		Accounts:  succeeded,
+		Failed:    failed,
+		Attempts:  attempts,
+	}, nil
+}
+
+// syncFromAccount 同步单个账号并立即落盘。
+func syncFromAccount(account *repository.Account) (*ModelSyncResult, error) {
+	sync, err := fetchFromAccount(account)
 	if err != nil {
 		models.SetDynamicError(err.Error())
 		result := &ModelSyncResult{Email: account.Email, Plan: account.Plan}
@@ -246,26 +326,33 @@ func SyncModels(email string) (*ModelSyncResult, error) {
 		Count:     len(sync.Models),
 		Models:    sync.Models,
 		UpdatedAt: time.Now(),
+		Accounts:  []string{account.Email},
 		Attempts:  sync.Attempts,
 	}, nil
 }
 
-// pickSyncAccount 选择用于同步模型的账号。
-func pickSyncAccount(email string) *repository.Account {
-	if strings.TrimSpace(email) != "" {
-		return AccountByEmail(strings.TrimSpace(email))
-	}
+// fetchFromAccount 只做拉取，不写缓存，便于多账号合并。
+func fetchFromAccount(account *repository.Account) (*WebModelSync, error) {
+	client := NewClaudeAI(SessionKey(account), config.Get().Proxy, account.Email, account.OrgUUID)
+	return client.FetchWebModels()
+}
+
+// syncCandidates 返回参与自动同步的账号，按等级从高到低排序并限制数量。
+func syncCandidates() []*repository.Account {
 	accounts := repository.LoadAccounts()
-	var best *repository.Account
+	usable := make([]*repository.Account, 0, len(accounts))
 	for i := range accounts {
-		if !AccountUsable(&accounts[i]) {
-			continue
-		}
-		if best == nil || PlanRank(accounts[i].Plan) > PlanRank(best.Plan) {
-			best = &accounts[i]
+		if AccountUsable(&accounts[i]) {
+			usable = append(usable, &accounts[i])
 		}
 	}
-	return best
+	sort.SliceStable(usable, func(i, j int) bool {
+		return PlanRank(usable[i].Plan) > PlanRank(usable[j].Plan)
+	})
+	if len(usable) > maxSyncAccounts {
+		usable = usable[:maxSyncAccounts]
+	}
+	return usable
 }
 
 // StartModelSyncLoop 按配置间隔从 web 端刷新模型清单。

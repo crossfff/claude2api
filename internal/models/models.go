@@ -55,6 +55,7 @@ func TierNames() []string {
 //   - UpstreamID：真正传给 claude.ai 的 model 字段；
 //   - Tier：该模型要求的最低订阅等级（free/pro/max/team/enterprise）；
 //   - Thinking：是否额外提供 ID+"-thinking" 形式；
+//   - Legacy：历史模型标记，仍可调用，但不再是当前主推版本；
 //   - Aliases：兼容别名，请求命中别名时同样转发到 UpstreamID。
 type ModelSpec struct {
 	ID         string   `json:"id" yaml:"id"`
@@ -62,12 +63,14 @@ type ModelSpec struct {
 	Name       string   `json:"name" yaml:"name"`
 	Tier       string   `json:"tier" yaml:"tier"`
 	Thinking   bool     `json:"thinking" yaml:"thinking"`
+	Legacy     bool     `json:"legacy,omitempty" yaml:"legacy,omitempty"`
 	Aliases    []string `json:"aliases" yaml:"aliases"`
 }
 
-// builtinModels 是内置模型清单，对应 Anthropic 2026-10 的官方模型。
-// 可用配置项 model_overrides 覆盖或追加，无需改代码。
+// builtinModels 是内置模型清单，取「官方当前模型 + 项目历史模型」的并集，
+// 保证不会因为版本迭代丢掉原本可用的模型。可用配置项 model_overrides 覆盖或追加。
 var builtinModels = []ModelSpec{
+	// 官方当前模型（Anthropic 2026-10）。
 	{
 		ID: "claude-fable-5-1", UpstreamID: "claude-fable-5-1",
 		Name: "Claude Fable 5.1", Tier: "max", Thinking: true,
@@ -83,6 +86,19 @@ var builtinModels = []ModelSpec{
 	{
 		ID: "claude-haiku-5-5", UpstreamID: "claude-haiku-5-5",
 		Name: "Claude Haiku 5.5", Tier: "free", Thinking: true,
+	},
+	// 历史模型：上游项目原本支持，保留以免已有客户端失效。
+	{
+		ID: "claude-sonnet-5", UpstreamID: "claude-sonnet-5",
+		Name: "Claude Sonnet 5", Tier: "free", Thinking: true, Legacy: true,
+	},
+	{
+		ID: "claude-sonnet-4-6", UpstreamID: "claude-sonnet-4-6",
+		Name: "Claude Sonnet 4.6", Tier: "free", Thinking: true, Legacy: true,
+	},
+	{
+		ID: "claude-haiku-4-5-20251001", UpstreamID: "claude-haiku-4-5-20251001",
+		Name: "Claude Haiku 4.5", Tier: "free", Thinking: true, Legacy: true,
 	},
 }
 
