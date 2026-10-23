@@ -19,7 +19,7 @@
 Docker Compose 一键部署
 
 ```bash
-git clone https://github.com/basketikun/claude2api.git
+git clone https://github.com/crossfff/claude2api.git
 cd claude2api
 cp config.example.yaml config.yaml
 docker compose up -d
